@@ -1,5 +1,7 @@
 package rtmp
 
+import "io"
+
 // SEE: http://wwwimages.adobe.com/www.adobe.com/content/dam/Adobe/en/devnet/amf/pdf/amf-file-format-spec.pdf
 
 type amf3DataType uint8
@@ -24,3 +26,42 @@ const (
 	amf3DataTypeVectorObject amf3DataType = 0x10
 	amf3DataTypeDictionary   amf3DataType = 0x11
 )
+
+type AMF3Encoder struct {
+	io.Writer
+	buf []byte
+}
+
+func NewAMF3Encoder(w io.Writer) *AMF3Encoder {
+	return &AMF3Encoder{Writer: w}
+}
+
+func (e *AMF3Encoder) Encode(data interface{}) (int, error) {
+	return e.encode(data)
+}
+
+func (e *AMF3Encoder) encode(data interface{}) (int, error) {
+	switch d := data.(type) {
+	case uint64:
+		return 0, nil
+	case float64:
+		return 0, nil
+	case bool:
+		return e.encodeBool(d)
+	case []byte:
+		return 0, nil
+	default:
+		return e.encodeUndefined()
+	}
+}
+
+func (e *AMF3Encoder) encodeUndefined() (int, error) {
+	return e.Write([]byte{byte(amf3DataTypeUndefined)})
+}
+
+func (e *AMF3Encoder) encodeBool(data bool) (int, error) {
+	if data {
+		return e.Write([]byte{byte(amf3DataTypeTrue)})
+	}
+	return e.Write([]byte{byte(amf3DataTypeFalse)})
+}

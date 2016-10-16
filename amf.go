@@ -1,3 +1,9 @@
 package rtmp
 
-// TODO: AMF commons here.
+type Encoder interface {
+	Encode(data interface{}) (int, error)
+}
+
+type Decoder interface {
+	Decode() (interface{}, error)
+}
