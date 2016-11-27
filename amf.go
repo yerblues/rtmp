@@ -1,9 +1,11 @@
 package rtmp
 
-type Encoder interface {
+const AMFBufSize = 1024
+
+type AMFEncoder interface {
 	Encode(data interface{}) (int, error)
 }
 
-type Decoder interface {
+type AMFDecoder interface {
 	Decode() (interface{}, error)
 }

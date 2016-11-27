@@ -1,6 +1,10 @@
 package rtmp
 
-import "io"
+import (
+	"fmt"
+	"io"
+	"reflect"
+)
 
 // SEE: http://wwwimages.adobe.com/www.adobe.com/content/dam/Adobe/en/devnet/amf/pdf/amf-file-format-spec.pdf
 
@@ -33,7 +37,10 @@ type AMF3Encoder struct {
 }
 
 func NewAMF3Encoder(w io.Writer) *AMF3Encoder {
-	return &AMF3Encoder{Writer: w}
+	return &AMF3Encoder{
+		Writer: w,
+		buf:    make([]byte, AMFBufSize),
+	}
 }
 
 func (e *AMF3Encoder) Encode(data interface{}) (int, error) {
@@ -41,14 +48,18 @@ func (e *AMF3Encoder) Encode(data interface{}) (int, error) {
 }
 
 func (e *AMF3Encoder) encode(data interface{}) (int, error) {
-	switch d := data.(type) {
-	case uint64:
+	r := reflect.ValueOf(data)
+	if !r.IsValid() {
+		return 0, fmt.Errorf("invalid type.")
+	}
+	switch r.Kind() {
+	case reflect.Uint32:
+		return e.encodeInteger(uint32(r.Uint()))
+	case reflect.Float64:
 		return 0, nil
-	case float64:
-		return 0, nil
-	case bool:
-		return e.encodeBool(d)
-	case []byte:
+	case reflect.Bool:
+		return e.encodeBool(r.Bool())
+	case reflect.Map:
 		return 0, nil
 	default:
 		return e.encodeUndefined()
@@ -56,12 +67,118 @@ func (e *AMF3Encoder) encode(data interface{}) (int, error) {
 }
 
 func (e *AMF3Encoder) encodeUndefined() (int, error) {
-	return e.Write([]byte{byte(amf3DataTypeUndefined)})
+	return e.writeMarker(amf3DataTypeUndefined)
 }
 
 func (e *AMF3Encoder) encodeBool(data bool) (int, error) {
 	if data {
-		return e.Write([]byte{byte(amf3DataTypeTrue)})
+		return e.writeMarker(amf3DataTypeTrue)
 	}
-	return e.Write([]byte{byte(amf3DataTypeFalse)})
+	return e.writeMarker(amf3DataTypeFalse)
+}
+
+func (e *AMF3Encoder) encodeInteger(data uint32) (int, error) {
+	switch {
+	case data <= 0x7F:
+		return e.Write([]byte{byte(data)})
+	case 0x80 <= data && data <= 0x3FFF:
+		return e.Write([]byte{
+			byte(data>>7 | 0x80),
+			byte(data & 0x7F),
+		})
+	case 0x4000 <= data && data <= 0x1FFFFF:
+		return e.Write([]byte{
+			byte(data>>14 | 0x80),
+			byte((data >> 7 & 0x7F) | 0x80),
+			byte(data & 0x7F),
+		})
+	case 0x200000 <= data && data <= 0x3FFFFFFF:
+		return e.Write([]byte{
+			byte(data>>22 | 0x80),
+			byte((data >> 15 & 0x7F) | 0x80),
+			byte((data >> 8 & 0x7F) | 0x80),
+			byte(data & 0xFF),
+		})
+	default:
+		return 0, fmt.Errorf("U29 range error.")
+	}
+}
+
+func (e *AMF3Encoder) writeMarker(marker amf3DataType) (int, error) {
+	return e.Write([]byte{byte(marker)})
+}
+
+type AMF3Decoder struct {
+	io.Reader
+	buf []byte
+}
+
+func NewAMF3Decoder(r io.Reader) *AMF3Decoder {
+	return &AMF3Decoder{
+		Reader: r,
+		buf:    make([]byte, AMFBufSize),
+	}
+}
+
+func (d *AMF3Decoder) Decode() (interface{}, error) {
+	return d.decode()
+}
+
+func (d *AMF3Decoder) decode() (interface{}, error) {
+	marker, err := d.readMarker()
+	if err != nil {
+		return amf3DataTypeUndefined, err
+	}
+	switch marker {
+	case amf3DataTypeUndefined:
+	case amf3DataTypeNull:
+	case amf3DataTypeFalse:
+		return false, nil
+	case amf3DataTypeTrue:
+		return true, nil
+	case amf3DataTypeInteger:
+		return d.decodeInteger()
+	case amf3DataTypeDouble:
+	case amf3DataTypeString:
+	case amf3DataTypeXMLDoc:
+	case amf3DataTypeDate:
+	case amf3DataTypeArray:
+	case amf3DataTypeObject:
+	case amf3DataTypeXML:
+	case amf3DataTypeByteArray:
+	case amf3DataTypeVectorInt:
+	case amf3DataTypeVectorUint:
+	case amf3DataTypeVectorDouble:
+	case amf3DataTypeVectorObject:
+	case amf3DataTypeDictionary:
+	default:
+	}
+	return nil, nil
+}
+
+func (d *AMF3Decoder) decodeInteger() (uint32, error) {
+	var data uint32
+	r := make([]byte, 1)
+	for i := 0; i < 4; i++ {
+		if _, err := d.Read(r); err != nil {
+			return 0, err
+		}
+		if i < 3 {
+			data = (data << 7) + uint32(r[0]&0x7F)
+			if r[0]&0x80 == 0 {
+				break
+			}
+		} else {
+			data = (data << 8) + uint32(r[0])
+		}
+	}
+	return data, nil
+}
+
+func (d *AMF3Decoder) readMarker() (amf3DataType, error) {
+	r := make([]byte, 1)
+	if _, err := d.Read(r); err != nil {
+		return amf3DataTypeUndefined, err
+	}
+	return amf3DataType(r[0]), nil
 }
