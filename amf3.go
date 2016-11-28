@@ -80,21 +80,27 @@ func (e *AMF3Encoder) encodeBool(data bool) (int, error) {
 func (e *AMF3Encoder) encodeInteger(data uint32) (int, error) {
 	switch {
 	case data <= 0x7F:
-		return e.Write([]byte{byte(data)})
+		return e.Write([]byte{
+			byte(amf3DataTypeInteger),
+			byte(data),
+		})
 	case 0x80 <= data && data <= 0x3FFF:
 		return e.Write([]byte{
+			byte(amf3DataTypeInteger),
 			byte(data>>7 | 0x80),
 			byte(data & 0x7F),
 		})
 	case 0x4000 <= data && data <= 0x1FFFFF:
 		return e.Write([]byte{
+			byte(amf3DataTypeInteger),
 			byte(data>>14 | 0x80),
 			byte((data >> 7 & 0x7F) | 0x80),
 			byte(data & 0x7F),
 		})
 	case 0x200000 <= data && data <= 0x3FFFFFFF:
 		return e.Write([]byte{
-			byte(data>>22 | 0x80),
+			byte(amf3DataTypeInteger),
+			byte((data >> 22 & 0x7F) | 0x80),
 			byte((data >> 15 & 0x7F) | 0x80),
 			byte((data >> 8 & 0x7F) | 0x80),
 			byte(data & 0xFF),
