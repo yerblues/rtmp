@@ -31,6 +31,10 @@ const (
 	amf3DataTypeDictionary   amf3DataType = 0x11
 )
 
+var (
+	ErrAMF3U29OverRange = fmt.Errorf("U29 range error.")
+)
+
 type AMF3Encoder struct {
 	io.Writer
 	buf []byte
@@ -97,7 +101,7 @@ func (e *AMF3Encoder) encodeInteger(data uint32) (int, error) {
 			byte((data >> 7 & 0x7F) | 0x80),
 			byte(data & 0x7F),
 		})
-	case 0x200000 <= data && data <= 0x3FFFFFFF:
+	case 0x200000 <= data && data <= 0x1FFFFFFF:
 		return e.Write([]byte{
 			byte(amf3DataTypeInteger),
 			byte((data >> 22 & 0x7F) | 0x80),
@@ -106,7 +110,7 @@ func (e *AMF3Encoder) encodeInteger(data uint32) (int, error) {
 			byte(data & 0xFF),
 		})
 	default:
-		return 0, fmt.Errorf("U29 range error.")
+		return 0, ErrAMF3U29OverRange
 	}
 }
 
