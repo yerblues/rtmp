@@ -19,6 +19,10 @@ func TestAMF3EncodeInteger(t *testing.T) {
 	}
 }
 
+func TestAMF3EncodeDouble(t *testing.T) {
+	testAMF3Encode(t, float64(0.01), 0x05, []byte{63, 132, 122, 225, 71, 174, 20, 123})
+}
+
 func TestAMF3EncodeIntegerOverRange(t *testing.T) {
 	e := NewAMF3Encoder(new(bytes.Buffer))
 	_, err := e.Encode(uint32(0x40000000))
@@ -34,6 +38,7 @@ func testAMF3Encode(t *testing.T, data interface{}, marker byte, expected []byte
 	if err != nil {
 		t.Fatal(err)
 	}
+	//fmt.Printf("encode result length:%d, b:%+v\n", l, w.Bytes())
 	expected = append([]byte{marker}, expected...)
 	if l != len(expected) {
 		t.Fatalf("Expecting result length %d, got %d", len(expected), l)
@@ -81,11 +86,20 @@ func TestAMF3DecodeInteger(t *testing.T) {
 	}
 }
 
+func TestAMF3DecodeDouble(t *testing.T) {
+	data := testAMF3Decode(t, 0x05, []byte{63, 132, 122, 225, 71, 174, 20, 123})
+	expected := float64(0.01)
+	if data.(float64) != expected {
+		t.Fatalf("Expecting %f, got %f", expected, data.(float64))
+	}
+}
+
 func testAMF3Decode(t *testing.T, marker byte, b []byte) interface{} {
 	b = append([]byte{marker}, b...)
 	r := bytes.NewBuffer(b)
 	d := NewAMF3Decoder(r)
 	data, err := d.Decode()
+	//fmt.Printf("decode result:%+v\n", data)
 	if err != nil {
 		t.Fatal(err)
 	}

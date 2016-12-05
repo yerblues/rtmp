@@ -1,8 +1,10 @@
 package rtmp
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 )
 
@@ -60,7 +62,7 @@ func (e *AMF3Encoder) encode(data interface{}) (int, error) {
 	case reflect.Uint32:
 		return e.encodeInteger(uint32(r.Uint()))
 	case reflect.Float64:
-		return 0, nil
+		return e.encodeDouble(r.Float())
 	case reflect.Bool:
 		return e.encodeBool(r.Bool())
 	case reflect.Map:
@@ -115,6 +117,15 @@ func (e *AMF3Encoder) encodeInteger(data uint32) (int, error) {
 	return e.Write(e.buf)
 }
 
+func (e *AMF3Encoder) encodeDouble(data float64) (int, error) {
+	e.appendMarker(amf3DataTypeDouble)
+	bits := math.Float64bits(data)
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, bits)
+	e.buf = append(e.buf, b...)
+	return e.Write(e.buf)
+}
+
 func (e *AMF3Encoder) appendMarker(marker amf3DataType) {
 	e.buf = append(e.buf[:0], byte(marker))
 }
@@ -150,6 +161,7 @@ func (d *AMF3Decoder) decode() (interface{}, error) {
 	case amf3DataTypeInteger:
 		return d.decodeInteger()
 	case amf3DataTypeDouble:
+		return d.decodeDouble()
 	case amf3DataTypeString:
 	case amf3DataTypeXMLDoc:
 	case amf3DataTypeDate:
@@ -183,6 +195,14 @@ func (d *AMF3Decoder) decodeInteger() (uint32, error) {
 		}
 	}
 	return data, nil
+}
+
+func (d *AMF3Decoder) decodeDouble() (float64, error) {
+	if _, err := d.Read(d.buf[:8]); err != nil {
+		return 0, err
+	}
+	bits := binary.BigEndian.Uint64(d.buf[:8])
+	return math.Float64frombits(bits), nil
 }
 
 func (d *AMF3Decoder) readMarker() (amf3DataType, error) {
