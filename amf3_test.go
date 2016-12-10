@@ -38,6 +38,9 @@ func testAMF3Encode(t *testing.T, data interface{}, marker byte, expected []byte
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := e.Flush(); err != nil {
+		t.Fatal(err)
+	}
 	//fmt.Printf("encode result length:%d, b:%+v\n", l, w.Bytes())
 	expected = append([]byte{marker}, expected...)
 	if l != len(expected) {

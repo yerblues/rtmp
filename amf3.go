@@ -78,62 +78,59 @@ func (e *AMF3Encoder) encode(data interface{}) (int, error) {
 }
 
 func (e *AMF3Encoder) encodeUndefined() (int, error) {
-	return e.writeMarker(amf3DataTypeUndefined)
+	return 1, e.w.WriteByte(byte(amf3DataTypeUndefined))
 }
 
 func (e *AMF3Encoder) encodeBool(data bool) (int, error) {
 	if data {
-		return e.writeMarker(amf3DataTypeTrue)
+		return 1, e.w.WriteByte(byte(amf3DataTypeTrue))
 	}
-	return e.writeMarker(amf3DataTypeFalse)
+	return 1, e.w.WriteByte(byte(amf3DataTypeFalse))
 }
 
 func (e *AMF3Encoder) encodeInteger(data uint32) (int, error) {
-	l, err := e.writeMarker(amf3DataTypeInteger)
-	if err != nil {
+	if err := e.w.WriteByte(byte(amf3DataTypeInteger)); err != nil {
 		return 0, err
 	}
+	var l int
+	var err error
 	switch {
 	case data <= 0x7F:
 		e.tmp[0] = byte(data)
-		return e.writeData(e.tmp[:1], l)
+		l, err = e.w.Write(e.tmp[:1])
 	case 0x80 <= data && data <= 0x3FFF:
 		e.tmp[0] = byte(data>>7 | 0x80)
 		e.tmp[1] = byte(data & 0x7F)
-		return e.writeData(e.tmp[:2], l)
+		l, err = e.w.Write(e.tmp[:2])
 	case 0x4000 <= data && data <= 0x1FFFFF:
 		e.tmp[0] = byte(data>>14 | 0x80)
 		e.tmp[1] = byte((data >> 7 & 0x7F) | 0x80)
 		e.tmp[2] = byte(data & 0x7F)
-		return e.writeData(e.tmp[:3], l)
+		l, err = e.w.Write(e.tmp[:3])
 	case 0x200000 <= data && data <= 0x1FFFFFFF:
 		e.tmp[0] = byte((data >> 22 & 0x7F) | 0x80)
 		e.tmp[1] = byte((data >> 15 & 0x7F) | 0x80)
 		e.tmp[2] = byte((data >> 8 & 0x7F) | 0x80)
 		e.tmp[3] = byte(data & 0xFF)
-		return e.writeData(e.tmp[:4], l)
+		l, err = e.w.Write(e.tmp[:4])
 	default:
 		return 0, ErrAMF3U29OverRange
 	}
+	return l + 1, err
 }
 
 func (e *AMF3Encoder) encodeDouble(data float64) (int, error) {
-	l, err := e.writeMarker(amf3DataTypeDouble)
-	if err != nil {
+	if err := e.w.WriteByte(byte(amf3DataTypeDouble)); err != nil {
 		return 0, err
 	}
 	bits := math.Float64bits(data)
 	binary.BigEndian.PutUint64(e.tmp[:], bits)
-	return e.writeData(e.tmp[:], l)
+	l, err := e.w.Write(e.tmp[:])
+	return l + 1, err
 }
 
-func (e *AMF3Encoder) writeMarker(marker amf3DataType) (int, error) {
-	return 1, e.w.WriteByte(byte(marker))
-}
-
-func (e *AMF3Encoder) writeData(b []byte, markerLen int) (int, error) {
-	l, err := e.w.Write(b)
-	return l + markerLen, err
+func (e *AMF3Encoder) Flush() error {
+	return e.w.Flush()
 }
 
 type AMF3Decoder struct {
@@ -157,11 +154,12 @@ func (d *AMF3Decoder) Decode() (interface{}, error) {
 }
 
 func (d *AMF3Decoder) decode() (interface{}, error) {
-	marker, err := d.readMarker()
+	b, err := d.r.ReadByte()
 	if err != nil {
 		return amf3DataTypeUndefined, err
 	}
-	switch marker {
+
+	switch amf3DataType(b) {
 	case amf3DataTypeUndefined:
 	case amf3DataTypeNull:
 	case amf3DataTypeFalse:
@@ -213,12 +211,4 @@ func (d *AMF3Decoder) decodeDouble() (float64, error) {
 	}
 	bits := binary.BigEndian.Uint64(d.tmp[:])
 	return math.Float64frombits(bits), nil
-}
-
-func (d *AMF3Decoder) readMarker() (amf3DataType, error) {
-	b, err := d.r.ReadByte()
-	if err != nil {
-		return amf3DataTypeUndefined, err
-	}
-	return amf3DataType(b), nil
 }
