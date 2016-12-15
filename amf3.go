@@ -135,7 +135,7 @@ func (e *AMF3Encoder) Flush() error {
 
 type AMF3Decoder struct {
 	r   *bufio.Reader
-	tmp [8]byte
+	b   byte
 	err error
 }
 
@@ -190,25 +190,30 @@ func (d *AMF3Decoder) decode() (interface{}, error) {
 func (d *AMF3Decoder) decodeInteger() (uint32, error) {
 	var data uint32
 	for i := 0; i < 4; i++ {
-		if _, err := d.r.Read(d.tmp[:1]); err != nil {
+		b, err := d.r.ReadByte()
+		if err != nil {
 			return 0, err
 		}
 		if i < 3 {
-			data = (data << 7) + uint32(d.tmp[0]&0x7F)
-			if d.tmp[0]&0x80 == 0 {
+			data = (data << 7) + uint32(b&0x7F)
+			if b&0x80 == 0 {
 				break
 			}
 		} else {
-			data = (data << 8) + uint32(d.tmp[0])
+			data = (data << 8) + uint32(b)
 		}
 	}
 	return data, nil
 }
 
 func (d *AMF3Decoder) decodeDouble() (float64, error) {
-	if _, err := d.r.Read(d.tmp[:]); err != nil {
+	b, err := d.r.Peek(8)
+	if err != nil {
 		return 0, err
 	}
-	bits := binary.BigEndian.Uint64(d.tmp[:])
+	bits := binary.BigEndian.Uint64(b)
+	if _, err := d.r.Discard(8); err != nil {
+		return 0, err
+	}
 	return math.Float64frombits(bits), nil
 }
